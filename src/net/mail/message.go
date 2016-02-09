@@ -5,7 +5,8 @@
 /*
 Package mail implements parsing of mail messages.
 
-For the most part, this package follows the syntax as specified by RFC 5322.
+For the most part, this package follows the syntax as specified by RFC 5322 and
+extended by RFC 6532.
 Notable divergences:
 	* Obsolete address formats are not parsed, including addresses with
 	  embedded route information.
@@ -26,6 +27,7 @@ import (
 	"net/textproto"
 	"strings"
 	"time"
+	"unicode/utf8"
 )
 
 var debug = debugT(false)
@@ -436,8 +438,27 @@ Loop:
 			// FWS (almost; we're ignoring CRLF)
 			qsb = append(qsb, c)
 			i++
+
+		case utf8.FullRuneInString(p.s[i:]):
+			// RFC 6532 qtext /= UTF8-non-ascii
+			r, w := utf8.DecodeRuneInString(p.s[i:])
+
+			if w < 2 {
+				if r == utf8.RuneError {
+					return "", fmt.Errorf("mail: invalid utf-8 in quoted-string: %q", p.s[:])
+				} else {
+					return "", fmt.Errorf("mail: bad character in quoted-string: %q", c)
+				}
+			}
+
+			for j := 0; j < w; j++ {
+				qsb = append(qsb, p.s[i])
+				i++
+			}
+
 		default:
-			return "", fmt.Errorf("mail: bad character in quoted-string: %q", c)
+			return "", fmt.Errorf("mail: invalid utf-8 in quoted-string: %q", p.s)
+
 		}
 	}
 	p.s = p.s[i+1:]
@@ -454,17 +475,23 @@ var errNonASCII = errors.New("mail: unencoded non-ASCII text in address")
 // If permissive is true, consumeAtom will not fail on
 // leading/trailing/double dots in the atom (see golang.org/issue/4938).
 func (p *addrParser) consumeAtom(dot bool, permissive bool) (atom string, err error) {
-	if c := p.peek(); !isAtext(c, false) {
-		if c > 127 {
-			return "", errNonASCII
+	var r rune
+	i := 0
+	w := 0
+	for ; i < p.len(); i += w {
+		r, w = utf8.DecodeRuneInString(p.s[i:])
+
+		if r == utf8.RuneError && w <= 1 {
+			return "", fmt.Errorf("mail: invalid utf-8 in address: %q", p.s[:])
 		}
+
+		if r < utf8.RuneSelf && !isAtext(byte(r), dot) {
+			break
+		}
+	}
+
+	if i == 0 {
 		return "", errors.New("mail: invalid string")
-	}
-	i := 1
-	for ; i < p.len() && isAtext(p.s[i], dot); i++ {
-	}
-	if i < p.len() && p.s[i] > 127 {
-		return "", errNonASCII
 	}
 	atom, p.s = string(p.s[:i]), p.s[i:]
 	if !permissive {

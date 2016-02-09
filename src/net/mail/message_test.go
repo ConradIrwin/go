@@ -127,11 +127,20 @@ func TestAddressParsingError(t *testing.T) {
 	}
 }
 
-func TestAddressParsingErrorUnquotedNonASCII(t *testing.T) {
-	const txt = "µ <micro@example.net>"
+func TestAddressParsingErrorUnquotedInvalidUtf8(t *testing.T) {
+	var txt = string([]byte{0xed, 0xa0, 0x80}) + " <micro@example.net>"
 	_, err := ParseAddress(txt)
-	if err == nil || !strings.Contains(err.Error(), "unencoded non-ASCII text in address") {
-		t.Errorf(`mail.ParseAddress(%q) err: %q, want ".*unencoded non-ASCII text in address.*"`, txt, err)
+	if err == nil || !strings.Contains(err.Error(), "invalid utf-8 in address") {
+		t.Errorf(`mail.ParseAddress(%q) err: %q, want ".*invalid utf-8 in address.*"`, txt, err)
+	}
+}
+
+func TestAddressParsingqQuotedInvalidUtf8(t *testing.T) {
+	var txt = "\"" + string([]byte{0xed, 0xa0, 0x80}) + "\" <half-surrogate@example.com>"
+
+	_, err := ParseAddress(txt)
+	if err == nil || !strings.Contains(err.Error(), "invalid utf-8 in quoted-string") {
+		t.Errorf(`mail.ParseAddress(%q) err: %q, want ".*invalid utf-8 in quoted-string.*"`, txt, err)
 	}
 }
 
@@ -261,6 +270,49 @@ func TestAddressParsing(t *testing.T) {
 				{
 					Name:    `Asem H.`,
 					Address: "noreply@example.com",
+				},
+			},
+		},
+		// RFC 6532 3.2.3, qtext /= UTF8-non-ascii
+		{
+			`"Gø Pher" <gopher@example.com>`,
+			[]*Address{
+				{
+					Name:    `Gø Pher`,
+					Address: "gopher@example.com",
+				},
+			},
+		},
+
+		// RFC 6532 3.2, atext /= UTF8-non-ascii
+		{
+			`µ <micro@example.com>`,
+			[]*Address{
+				{
+					Name:    `µ`,
+					Address: "micro@example.com",
+				},
+			},
+		},
+
+		// RFC 6532 3.2.2, local address parts allow UTF-8
+		{
+			`Micro <µ@example.com>`,
+			[]*Address{
+				{
+					Name:    `Micro`,
+					Address: "µ@example.com",
+				},
+			},
+		},
+
+		// RFC 6532 3.2.4, domains parts allow UTF-8
+		{
+			`Micro <micro@µ.example.com>`,
+			[]*Address{
+				{
+					Name:    `Micro`,
+					Address: "micro@µ.example.com",
 				},
 			},
 		},
