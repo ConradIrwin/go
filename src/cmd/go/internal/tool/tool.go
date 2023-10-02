@@ -12,14 +12,19 @@ import (
 	"fmt"
 	"go/build"
 	"internal/platform"
+	"io/ioutil"
 	"os"
 	"os/exec"
 	"os/signal"
+	"path"
 	"sort"
 	"strings"
 
 	"cmd/go/internal/base"
 	"cmd/go/internal/cfg"
+	"cmd/go/internal/modload"
+
+	"golang.org/x/mod/modfile"
 )
 
 var CmdTool = &base.Command{
@@ -28,12 +33,16 @@ var CmdTool = &base.Command{
 	Short:     "run specified go tool",
 	Long: `
 Tool runs the go tool command identified by the arguments.
+
+Go ships with a number of builtin tools, and additional tools
+may be defined in the go.mod of the current module.
+
 With no arguments it prints the list of known tools.
 
 The -n flag causes tool to print the command that would be
 executed but not execute it.
 
-For more about each tool command, see 'go doc cmd/<command>'.
+For more about each builtin tool command, see 'go doc cmd/<command>'.
 `,
 }
 
@@ -61,6 +70,7 @@ func runTool(ctx context.Context, cmd *base.Command, args []string) {
 		return
 	}
 	toolName := args[0]
+
 	// The tool name must be lower-case letters, numbers or underscores.
 	for _, c := range toolName {
 		switch {
@@ -83,6 +93,18 @@ func runTool(ctx context.Context, cmd *base.Command, args []string) {
 			// If the dist tool does not exist, impersonate this command.
 			if impersonateDistList(args[2:]) {
 				return
+			}
+		}
+
+		if modFile := modFileForTools(); modFile != nil {
+			for _, tool := range modFile.Tool {
+				if path.Base(tool.Path) == toolName ||  tool.Path == toolName {
+					if toolN {
+						fmt.Printf("go run %s\n", tool.Path)
+						return
+					}
+					runModTool(tool.Path, args[1:])
+				}
 			}
 		}
 
@@ -149,6 +171,12 @@ func listTools() {
 		return
 	}
 
+	modFile := modFileForTools()
+	count := map[string]int{}
+	if modFile != nil {
+		fmt.Println("# builtin tools")
+	}
+
 	sort.Strings(names)
 	for _, name := range names {
 		// Unify presentation by going to lower case.
@@ -160,7 +188,25 @@ func listTools() {
 		if cfg.BuildToolchainName == "gccgo" && !isGccgoTool(name) {
 			continue
 		}
+		count[name] += 1
 		fmt.Println(name)
+	}
+
+	if modFile == nil {
+		return
+	}
+
+	fmt.Println("# go.mod tools")
+	for _, tool := range modFile.Tool {
+		count[path.Base(tool.Path)] += 1
+	}
+
+	for _, tool := range modFile.Tool {
+		if count[path.Base(tool.Path)] > 1 {
+			fmt.Println(tool.Path)
+		} else {
+			fmt.Println(path.Base(tool.Path))
+		}
 	}
 }
 
@@ -221,4 +267,27 @@ func impersonateDistList(args []string) (handled bool) {
 
 	os.Stdout.Write(out)
 	return true
+}
+
+func useModules() bool {
+	return modload.Enabled() && modload.HasModRoot()
+}
+
+func modFileForTools() *modfile.File {
+	if !useModules() {
+		return nil;
+	}
+	bytes, err := ioutil.ReadFile(modload.ModFilePath())
+	if err != nil {
+		panic(err)
+	}
+	file, err := modfile.Parse(modload.ModFilePath(), bytes, nil)
+	if err != nil {
+		panic(err)
+	}
+	return file
+}
+
+func runModTool(path string, args []string) {
+	fmt.Println("Running...", path, args)
 }

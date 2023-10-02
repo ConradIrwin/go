@@ -13,6 +13,15 @@ go mod tidy
 ! grep 'tool example.com/tools/cmd/hello' go.mod
 ! grep 'require example.com/tools v1.0.0' go.mod
 
+go tool
+! stdout 'hello'
+go mod edit -tool example.com/tools/cmd/hello
+go tool
+stdout '# go.mod tools'
+stdout 'hello'
+go tool -n hello
+stdout 'go run example.com/tools/cmd/hello'
+
 -- go.mod --
 module m
 go 1.22
