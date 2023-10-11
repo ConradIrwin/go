@@ -340,9 +340,9 @@ func LoadPackages(ctx context.Context, opts PackageOpts, patterns ...string) (ma
 			case m.Pattern() == "tools":
 				modVersion := MainModules.ModContainingCWD()
 				if modVersion != (module.Version{}) {
-					file := MainModules.ModFile(MainModules.ModContainingCWD())
-					for _, tool := range file.Tool {
-						m.Pkgs = append(m.Pkgs, tool.Path)
+					modFile := MainModules.ModFile(MainModules.ModContainingCWD())
+					for _, tool := range modFile.Tool {
+						m.Pkgs = append(m.Pkgs, qualifiedToolPath(modFile, tool))
 					}
 				}
 			default:
@@ -1125,7 +1125,7 @@ func loadFromRoots(ctx context.Context, params loaderParams) *loader {
 			modFile := MainModules.ModFile(MainModules.ModContainingCWD())
 			if modFile != nil {
 				for _, tool := range modFile.Tool {
-					ld.pkg(ctx, tool.Path, pkgInAll)
+					ld.pkg(ctx, qualifiedToolPath(modFile, tool), pkgInAll)
 				}
 			}
 		}

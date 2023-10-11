@@ -191,10 +191,11 @@ func matchPackages(ctx context.Context, m *search.Match, tags map[string]bool, f
 			}
 			modFile := MainModules.ModFile(mod)
 			for _, tool := range modFile.Tool {
-				if !have[tool.Path] && isMatch(tool.Path) {
-					have[tool.Path] = true
+				path := qualifiedToolPath(modFile, tool)
+				if !have[path] && isMatch(path) {
+					have[path] = true
 					q.Add(func() {
-						addPkg(tool.Path)
+						addPkg(path)
 					})
 				}
 			}
