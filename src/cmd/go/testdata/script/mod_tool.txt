@@ -1,26 +1,37 @@
+# add hello to go.mod
 go mod edit -tool example.com/tools/cmd/hello
 go mod tidy
 grep 'tool example.com/tools/cmd/hello' go.mod
 grep 'require example.com/tools v1.0.0' go.mod
 
+# verify hello is present in the module graph
 go list tools
 stdout example.com/tools/cmd/hello
 go list all
 stdout example.com/tools/cmd/hello
 
+# remove hello from go.mod
 go mod edit -droptool example.com/tools/cmd/hello
 go mod tidy
 ! grep 'tool example.com/tools/cmd/hello' go.mod
 ! grep 'require example.com/tools v1.0.0' go.mod
-
 go tool
 ! stdout 'hello'
+
+# add hello to go.mod
 go mod edit -tool example.com/tools/cmd/hello
+go mod tidy
+
+# verify hello is listed by go tool
 go tool
 stdout '# go.mod tools'
 stdout 'hello'
 go tool -n hello
 stdout 'go run example.com/tools/cmd/hello'
+
+# verify hello is run by go tool
+go tool hello
+stdout 'hello, world'
 
 -- go.mod --
 module m
