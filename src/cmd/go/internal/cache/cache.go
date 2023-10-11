@@ -72,6 +72,9 @@ type Cache interface {
 
 	// FuzzDir returns where fuzz files are stored.
 	FuzzDir() string
+
+	// ToolDir returns where built tools are stored
+	ToolDir() string
 }
 
 // A Cache is a package cache, backed by a file system directory tree.
@@ -382,6 +385,7 @@ func (c *DiskCache) Trim() error {
 		subdir := filepath.Join(c.dir, fmt.Sprintf("%02x", i))
 		c.trimSubdir(subdir, cutoff)
 	}
+	c.trimTooldir(cutoff)
 
 	// Ignore errors from here: if we don't write the complete timestamp, the
 	// cache will appear older than it is, and we'll trim it again next time.
@@ -624,4 +628,23 @@ func (c *DiskCache) copyFile(file io.ReadSeeker, out OutputID, size int64) error
 // TODO(#48526): make Trim remove unused files from this directory.
 func (c *DiskCache) FuzzDir() string {
 	return filepath.Join(c.dir, "fuzz")
+}
+
+// ToolDir returns a subdirectory within the cache for storing fuzzing data.
+// The subdirectory may not exist.
+func (c *DiskCache) ToolDir() string {
+	return filepath.Join(c.dir, "tool")
+}
+
+func (c *DiskCache) trimTooldir(cutoff time.Time) {
+	filepath.WalkDir(c.ToolDir(), func(path string, d fs.DirEntry, err error) error {
+		if d == nil || d.IsDir() {
+			return nil
+		}
+		info, err := d.Info()
+		if err == nil && info.ModTime().Before(cutoff) {
+			os.Remove(path)
+		}
+		return nil
+	})
 }
